@@ -1,4 +1,14 @@
 
+class SkvpVideoInvalidInitError(Exception):
+	pass
+
+class SkvpVideoInvalidValueError(Exception):
+	pass
+
+class SkvpForbiddenOperationError(Exception):
+	pass
+
+
 class SkvpVideo:
 	def __init__(self, input_file_handler = None, fps = None, num_joints = None, 
 			connections = None, joint_radiuses = None,
@@ -8,8 +18,7 @@ class SkvpVideo:
 
 		if input_file_handler != None:
 			if got_parameters:
-				return
-				# Throw exception - can't specify both
+				raise SkvpVideoInvalidInitError('Cannot specify both input file header and Skvp parameters')
 			self.parse_skvp_file(input_file_handler)
 			return
 
@@ -22,25 +31,50 @@ class SkvpVideo:
 		self.frames = []
 		self.invideo_camera_locations = []
 
+	def validate_fps(self, fps):
+		if fps == None:
+			return
+		try:
+			fps_float = float(fps)
+		except:
+			raise SkvpVideoInvalidValueError('\'fps\' must be a positive real number')
+		if fps_float <= 0:
+			raise SkvpVideoInvalidValueError('\'fps\' must be a positive real number')
+
 	def set_fps(self, fps):
 		self.validate_fps(fps)
-		self.fps = fps
+		self.fps = float(fps) if fps != None else None
 	
 	def get_fps(self):
 		return self.fps
 
-	def set_num_joints(self, num_joints):
-		if len(self.frames) > 0:
+	def validate_num_joints(self, num_joints):
+		if hasattr(self, 'frames'):
+			if len(self.frames) > 0:
+				raise SkvpForbiddenOperationError('Cannot modify number of joints while frames list is not empty')
+		if hasattr(self, 'connections'):
+			if len(self.connections) > 0:
+				raise SkvpForbiddenOperationError('Cannot modify number of joints while connections list is not empty')
+		if num_joints == None:
 			return
-			# Fix - throw exception!
+		try:
+			num_joints_int = int(num_joints)
+		except:
+			raise SkvpVideoInvalidValueError('\'num_joints\' must be a positive integer')
+		if num_joints_int <= 0:
+			raise SkvpVideoInvalidValueError('\'num_joints\' must be a positive integer')
+
+	def set_num_joints(self, num_joints):
 		self.validate_num_joints(num_joints)
-		self.num_joints = num_joints
+		self.num_joints = int(num_joints) if num_joints != None else None
 
 	def get_num_joints(self):
 		return self.num_joints
 
 	def set_connections(self, connections):
 		self.validate_connections(connections)
+		if connections == None:
+			connections = ()
 		self.connections = tuple(connections)
 
 	def get_connections(self):
