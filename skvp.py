@@ -177,5 +177,67 @@ class SkvpVideo:
 	def get_camera_scene_rotation(self):
 		return self.camera_scene_rotation
 
+	def get_frame_camera_settings(self, i):
+		if i < 0 or i >= len(self.frames):
+			raise SkvpForbiddenOperationError('frame index is out of video bounds: ' + str(i))
+		# We want to find largest index that is smaller or equals to i
+		if len(self.invideo_camera_settings) == 0:
+			return None
+		if i in self.invideo_camera_settings:
+			return self.invideo_camera_settings[i]
+		relevant_frames = sorted([frame_num for frame_num in self.invideo_camera_settings.keys() if frame_num <= i])
+		if len(relevant_frames) == 0:
+			return None
+		return self.invideo_camera_settings[relevant_frames[-1]]
+
+	def __len__(self):
+		return len(self.frames)
+
+	def __getitem__(self, val):
+		if type(val) is int:
+			start = len(self) + val if val < 0 else val
+			end = start + 1
+			step = 1
+		elif type(val) is slice:
+			start = val.start
+			end = val.stop
+			step = val.step
+		if start == None:
+			start = 0
+		if end == None:
+			end = len(self)
+		if step == None:
+			step = 1
+		if not (type(start) is int and type(end) is int and type(step) is int):
+			raise SkvpForbiddenOperationError('Slicing parameters must be integers')
+		new_vid = SkvpVideo(fps = self.fps, num_joints = self.num_joints, connections = self.connections, joint_radiuses = self.joint_radiuses, connections_radius = self.connections_radius, camera_location = self.camera_location, camera_destination = self.camera_destination, camera_scene_rotation = self.camera_scene_rotation)
+		new_vid.frames = self.frames[start:end:step]
+		start_pos = (len(self) + start) if start < 0 else start
+		end_pos = (len(self) + end) if end < 0 else end
+		last_camera_settings = None
+		for i, frame_key in enumerate(range(start_pos, end_pos, step)):
+			camera_settings = self.get_frame_camera_settings(frame_key)
+			if camera_settings == None and i == 0:
+				camera_settings = {}
+				if self.camera_location != None:
+					camera_settings['camera_location'] = self.camera_location
+				if self.camera_destination != None:
+					camera_settings['camera_destination'] = self.camera_destination
+				if self.camera_scene_rotation != None:
+					camera_settings['camera_scene_rotation'] = self.camera_scene_rotation
+				if len(camera_settings) > 0:
+					new_vid.invideo_camera_settings[i] = camera_settings
+			elif camera_settings != None:
+				if camera_settings == last_camera_settings:
+					continue
+				new_vid.invideo_camera_settings[i] = dict(camera_settings)
+				last_camera_settings = camera_settings
+
+		return new_vid
+
+
+
+
+
 
 
