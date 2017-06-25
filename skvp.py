@@ -1,4 +1,5 @@
 import sys
+import io
 
 class SkvpVideoInvalidInitError(Exception):
 	pass
@@ -8,6 +9,19 @@ class SkvpVideoInvalidValueError(Exception):
 
 class SkvpForbiddenOperationError(Exception):
 	pass
+
+
+SKVP_HEADER_TITLE_LINE = '*SKeleton Video Player File Header*'
+SKVP_VIDEO_TITLE_LINE = '*Video*'
+SKVP_HEADER_NUM_JOINTS_ENTRY = 'NumJoints'
+SKVP_HEADER_NUM_FRAMES_ENTRY = 'NumberOfFrames'
+SKVP_HEADER_FPS_ENTRY = 'FPS'
+SKVP_HEADER_CONNECTIONS_ENTRY = 'Connections'
+SKVP_HEADER_JOINT_RADIUSES_ENTRY = 'JointRadiuses'
+SKVP_HEADER_CONNECTIONS_RADIUS_ENTRY = 'ConnectionsRadius'
+SKVP_HEADER_CAMERA_LOCATION_ENTRY = 'CameraLocation'
+SKVP_HEADER_CAMERA_DESTINATION_ENTRY = 'CameraDestination'
+SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY = 'CameraSceneRotation'
 
 
 class SkvpVideo:
@@ -227,7 +241,7 @@ class SkvpVideo:
 		return new_vid
 
 	def __add__(self, vid_2):
-		if type(self) != type(vid_2):
+		if type(vid_2) is not SkvpVideo:
 			raise SkvpForbiddenOperationError('Cannot add a non SkvpVideo object')
 		if self.num_joints != vid_2.num_joints:
 			raise SkvpForbiddenOperationError('Cannot add two videos with different number of joints')
@@ -253,6 +267,15 @@ class SkvpVideo:
 
 		return new_vid
 			
+def dump(skvp_video, ostream):
+	pass
+
+def dumps(skvp_video):
+	string_stream = io.StringIO()
+	dump(skvp_video, string_stream)
+
+	return string_stream.getvalue()
+
 
 
 
