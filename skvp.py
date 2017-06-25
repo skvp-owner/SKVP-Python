@@ -1,3 +1,4 @@
+import sys
 
 class SkvpVideoInvalidInitError(Exception):
 	pass
@@ -217,23 +218,41 @@ class SkvpVideo:
 		last_camera_settings = None
 		for i, frame_key in enumerate(range(start_pos, end_pos, step)):
 			camera_settings = self.get_frame_camera_settings(frame_key)
-			if camera_settings == None and i == 0:
-				camera_settings = {}
-				if self.camera_location != None:
-					camera_settings['camera_location'] = self.camera_location
-				if self.camera_destination != None:
-					camera_settings['camera_destination'] = self.camera_destination
-				if self.camera_scene_rotation != None:
-					camera_settings['camera_scene_rotation'] = self.camera_scene_rotation
-				if len(camera_settings) > 0:
-					new_vid.invideo_camera_settings[i] = camera_settings
-			elif camera_settings != None:
+			if camera_settings != None:
 				if camera_settings == last_camera_settings:
 					continue
 				new_vid.invideo_camera_settings[i] = dict(camera_settings)
 				last_camera_settings = camera_settings
 
 		return new_vid
+
+	def __add__(self, vid_2):
+		if type(self) != type(vid_2):
+			raise SkvpForbiddenOperationError('Cannot add a non SkvpVideo object')
+		if self.num_joints != vid_2.num_joints:
+			raise SkvpForbiddenOperationError('Cannot add two videos with different number of joints')
+		if self.fps != vid_2.fps:
+			sys.stderr.write('Warning: adding videos with mismatching frame rates. Frames will be copied without modification\n')
+		new_vid = SkvpVideo(fps = self.fps, num_joints = self.num_joints, connections = self.connections, joint_radiuses = self.joint_radiuses, connections_radius = self.connections_radius, camera_location = self.camera_location, camera_destination = self.camera_destination, camera_scene_rotation = self.camera_scene_rotation)
+		new_vid.frames = self.frames + vid_2.frames
+		for frame_index, camera_settings in self.invideo_camera_settings:
+			new_vid.invideo_camera_settings[frame_index] = dict(camera_settings)
+		num_frames_self = len(self)
+		for frame_index, camera_settings in vid_2.invideo_camera_settings:
+			new_vid.invideo_camera_settings[frame_index + num_frames_self] = dict(camera_settings)
+		if num_frames_self not in new_vid.invideo_camera_settings:
+			camera_settings = {}
+			if vid_2.get_camera_location() != None:
+				camera_settings['camera_location'] = vid_2.get_camera_location()
+			if vid_2.get_camera_destination() != None:
+				camera_settings['camera_destination'] = vid_2.get_camera_destination()
+			if vid_2.get_camera_scene_rotation() != None:
+				camera_settings['camera_scene_rotation'] = vid_2.get_camera_scene_rotation()
+			if len(camera_settings) > 0:
+				new_vid.invideo_camera_settings[num_frames_self] = camera_settings
+
+		return new_vid
+			
 
 
 
