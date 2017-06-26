@@ -10,6 +10,9 @@ class SkvpVideoInvalidValueError(Exception):
 class SkvpForbiddenOperationError(Exception):
 	pass
 
+class SkvpFileSyntaxError(Exception):
+	pass
+
 
 SKVP_HEADER_TITLE_LINE = '*SKeleton Video Player File Header*'
 SKVP_VIDEO_TITLE_LINE = '*Video*'
@@ -69,10 +72,10 @@ class SkvpVideo:
 			if len(self.frames) > 0:
 				raise SkvpForbiddenOperationError('Cannot modify number of joints while frames list is not empty')
 		if hasattr(self, 'connections'):
-			if len(self.connections) > 0:
+			if self.connections != None and len(self.connections) > 0:
 				raise SkvpForbiddenOperationError('Cannot modify number of joints while connections list is not empty')
 		if hasattr(self, 'joint_radiuses'):
-			if len(self.joint_radiuses) > 0:
+			if self.joint_radiuses != None and len(self.joint_radiuses) > 0:
 				raise SkvpForbiddenOperationError('Cannot modify number of joints while joint radiuses are defined')
 		if num_joints == None:
 			return
@@ -324,7 +327,97 @@ def dumps(skvp_video):
 
 	return string_stream.getvalue()
 
+def find_skvp_header_beginning(istream):
+	while True:
+		line = istream.readline()
+		if line == '':    # Empty line within file must contain '\n' char
+			raise SkvpFileSyntaxError('SKVP file is empty')
+		line = line.strip()
+		if line == '':
+			continue
+		if line == SKVP_HEADER_TITLE_LINE:
+			return
+		raise SkvpFileSyntaxError('SKVP file must start with line: ' + SKVP_HEADER_TITLE_LINE)
 
+def find_skvp_video_start_and_get_header(istream):
+	header = {}
+	while True:
+		line = istream.readline()
+		if line == '':    # Empty line within file must contain '\n' char
+			raise SkvpFileSyntaxError('Could not find line which indicates starting of video: ' + SKVP_VIDEO_TITLE_LINE)
+		line = line.strip()
+		if line == '':
+			continue
+		if line == SKVP_VIDEO_TITLE_LINE:
+			return header
+		parts = line.split('=', 1)
+		if len(parts) != 2:
+			raise SkvpFileSyntaxError('Header lines must be in the format: ENTRY_NAME=ENTRY_VALUE')
+		header[parts[0].strip()] = parts[1].strip()
+
+def header_to_video_object(header, skvp_video):
+	if SKVP_HEADER_NUM_JOINTS_ENTRY not in header:
+		raise SkvpFileSyntaxError('Header does not contain entry: ' + SKVP_HEADER_NUM_JOINTS_ENTRY)
+	try:
+		num_joints = int(header[SKVP_HEADER_NUM_JOINTS_ENTRY])
+	except:
+		raise SkvpFileSyntaxError(SKVP_HEADER_NUM_JOINTS_ENTRY + ' must be a natural number')
+	skvp_video.set_num_joints(num_joints)
+	if SKVP_HEADER_FPS_ENTRY not in header:
+		raise SkvpFileSyntaxError('Header does not contain entry: ' + SKVP_HEADER_FPS_ENTRY)
+	try:
+		fps = float(header[SKVP_HEADER_FPS_ENTRY])
+	except:
+		raise SkvpFileSyntaxError(SKVP_HEADER_FPS_ENTRY + ' must be a real number')
+	skvp_video.set_fps(fps)
+	if SKVP_HEADER_CONNECTIONS_ENTRY in header:
+		try:
+			connections = [(int(p.split('-')[0]), int(p.split('-')[1])) for p in header[SKVP_HEADER_CONNECTIONS_ENTRY].split(',')]
+		except:
+			raise SkvpFileSyntaxError(SKVP_HEADER_CONNECTIONS_ENTRY + ' must be pairs of natural numbers separated by commas, where each pair is separated by a hyphen')
+		skvp_video.set_connections(connections)
+	if SKVP_HEADER_JOINT_RADIUSES_ENTRY in header:
+		try:
+			radiuses = [float(rad) for rad in header[SKVP_HEADER_JOINT_RADIUSES_ENTRY].split(',')]
+		except:
+			raise SkvpFileSyntaxError(SKVP_HEADER_JOINT_RADIUSES_ENTRY + ' must be a list of real numbers, separated by commas')
+		skvp_video.set_joint_radiuses(radiuses)
+	if SKVP_HEADER_CONNECTIONS_RADIUS_ENTRY in header:
+		try:
+			radius = float(header[SKVP_HEADER_CONNECTIONS_RADIUS_ENTRY])
+		except:
+			raise SkvpFileSyntaxError(SKVP_HEADER_CONNECTIONS_RADIUS_ENTRY + ' must be a real number')
+		skvp_video.set_connections_radius(radius)
+	if SKVP_HEADER_CAMERA_LOCATION_ENTRY in header:
+		try:
+			location = [float(val) for val in header[SKVP_HEADER_CAMERA_LOCATION_ENTRY].split(',')]
+		except:
+			raise SkvpFileSyntaxError(SKVP_HEADER_CAMERA_LOCATION_ENTRY + ' must be a list of real numbers, separated by commas')
+		skvp_video.set_camera_location(location)
+	if SKVP_HEADER_CAMERA_DESTINATION_ENTRY in header:
+		try:
+			destination = [float(val) for val in header[SKVP_HEADER_CAMERA_DESTINATION_ENTRY].split(',')]
+		except:
+			raise SkvpFileSyntaxError(SKVP_HEADER_CAMERA_DESTINATION_ENTRY + ' must be a list of real numbers, separated by commas')
+		skvp_video.set_camera_destination(destination)
+	if SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY in header:
+		try:
+			rotation = float(header[SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY])
+		except:
+			raise SkvpFileSyntaxError(SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY + ' must be a real number')
+		skvp_video.set_camera_scene_rotation(rotation)
+
+def load(istream):
+	find_skvp_header_beginning(istream)
+	header = find_skvp_video_start_and_get_header(istream)
+	skvp_video = SkvpVideo()
+	header_to_video_object(header, skvp_video)
+
+	return skvp_video
+
+def loads(video_string):
+	string_stream = io.StringIO(video_string)
+	return load(string_stream)
 
 
 
