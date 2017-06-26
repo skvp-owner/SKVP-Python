@@ -268,7 +268,55 @@ class SkvpVideo:
 		return new_vid
 			
 def dump(skvp_video, ostream):
-	pass
+	self = skvp_video 
+	if self.fps == None:
+		raise SkvpForbiddenOperationError('Cannot dump SkvpVideo while FPS is not defined')
+	if self.num_joints == None:
+		raise SkvpForbiddenOperationError('Cannot dump SkvpVideo while number of joints is not defined')
+	ostream.write(SKVP_HEADER_TITLE_LINE)
+	ostream.write('\n')
+	ostream.write('{0}={1}'.format(SKVP_HEADER_NUM_JOINTS_ENTRY, str(self.num_joints)))
+	ostream.write('\n')
+	ostream.write('{0}={1}'.format(SKVP_HEADER_NUM_FRAMES_ENTRY, str(len(self.frames))))
+	ostream.write('\n')
+	ostream.write('{0}={1}'.format(SKVP_HEADER_FPS_ENTRY, str(self.fps)))
+	ostream.write('\n')
+	if self.connections != None:
+		ostream.write('{0}={1}'.format(SKVP_HEADER_CONNECTIONS_ENTRY, ','.join(['{0}-{1}'.format(str(c[0]), str(c[1])) for c in self.connections])))
+		ostream.write('\n')
+	if self.joint_radiuses != None:
+		ostream.write('{0}={1}'.format(SKVP_HEADER_JOINT_RADIUSES_ENTRY, ','.join([str(val) for val in self.joint_radiuses])))
+		ostream.write('\n')
+	if self.connections_radius != None:
+		ostream.write('{0}={1}'.format(SKVP_HEADER_CONNECTIONS_RADIUS_ENTRY, str(self.connections_radius)))
+		ostream.write('\n')
+	if self.camera_location != None:
+		ostream.write('{0}={1}'.format(SKVP_HEADER_CAMERA_LOCATION_ENTRY, ','.join([str(val) for val in self.camera_location])))
+		ostream.write('\n')
+	if self.camera_destination != None:
+		ostream.write('{0}={1}'.format(SKVP_HEADER_CAMERA_DESTINATION_ENTRY, ','.join([str(val) for val in self.camera_destination])))
+		ostream.write('\n')
+	if self.camera_scene_rotation != None:
+		ostream.write('{0}={1}'.format(SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY, str(self.camera_scene_rotation)))
+		ostream.write('\n')
+	ostream.write('\n')
+	ostream.write(SKVP_VIDEO_TITLE_LINE)
+	ostream.write('\n')
+	for i, frame in enumerate(self.frames):
+		if i in self.invideo_camera_settings:
+			if 'camera_location' in self.invideo_camera_settings[i]:
+				ostream.write('{0}={1}'.format(SKVP_HEADER_CAMERA_LOCATION_ENTRY, ','.join([str(val) for val in self.invideo_camera_settings[i]['camera_location']])))
+				ostream.write('\n')
+			if 'camera_destination' in self.invideo_camera_settings[i]:
+				ostream.write('{0}={1}'.format(SKVP_HEADER_CAMERA_DESTINATION_ENTRY, ','.join([str(val) for val in self.invideo_camera_settings[i]['camera_destination']])))
+				ostream.write('\n')
+			if 'camera_scene_rotation' in self.invideo_camera_settings[i]:
+				ostream.write('{0}={1}'.format(SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY, str(self.invideo_camera_settings[i]['camera_scene_rotation'])))
+				ostream.write('\n')
+		ostream.write(';'.join([','.join([str(coor) for coor in joint_xyz]) for joint_xyz in frame]))
+		if i < len(self.frames) - 1:
+			ostream.write('\n')
+		
 
 def dumps(skvp_video):
 	string_stream = io.StringIO()
