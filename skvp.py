@@ -14,6 +14,9 @@ class SkvpForbiddenOperationError(Exception):
 class SkvpFileSyntaxError(Exception):
 	pass
 
+class SkvpUsageError(Exception):
+	pass
+
 
 SKVP_HEADER_TITLE_LINE = '*SKeleton Video Player File Header*'
 SKVP_VIDEO_TITLE_LINE = '*Video*'
@@ -196,7 +199,23 @@ class SkvpVideo:
 	def get_camera_scene_rotation(self):
 		return self.camera_scene_rotation
 
+	def add_frame(self, joint_locations_iterable):
+		if not hasattr(self, 'num_joints'):
+			raise SkvpForbiddenOperationError('Cannot add frames while number of joints is not defined')
+		if self.num_joints == None:
+			raise SkvpForbiddenOperationError('Cannot add frames while number of joints is not defined')
+		frame = [np.array(joint_loc) for joint_loc in joint_locations_iterable]
+		if len(frame) != self.num_joints:
+			raise SkvpVideoInvalidValueError('Frame joint locations must contain exactly J locations, where J is number of joints')
+		self.frames.append(frame)
+
+	def set_frame_camera_settings(self, i, camera_settings):
+		if i < 0 or i >= len(self.num_frames):
+			raise SkvpForbiddenOperationError('Index out of bounds')
+		self.invideo_camera_settings[i] = camera_settings
+
 	def get_frame_camera_settings(self, i):
+		# This method returns the **LATEST**, *invideo* camera settings for frame i (can be defined in less than i)
 		if i < 0 or i >= len(self.frames):
 			raise SkvpForbiddenOperationError('frame index is out of video bounds: ' + str(i))
 		# We want to find largest index that is smaller or equals to i
@@ -208,6 +227,14 @@ class SkvpVideo:
 		if len(relevant_frames) == 0:
 			return None
 		return self.invideo_camera_settings[relevant_frames[-1]]
+	
+	def get_video_length(self, seconds = False):
+		if seconds:
+			if self.fps == None:
+				raise SkvpForbiddenOperationError('Cannot calculate length in seconds while FPS is not defined')
+			return len(self.frames) / float(self.fps)
+		
+		return len(self)
 
 	def __len__(self):
 		return len(self.frames)
@@ -446,7 +473,7 @@ def read_frames_into_video_object(istream, skvp_video):
 		if camera_scene_rotation != None:
 			camera_settings['camera_scene_rotation'] = camera_scene_roatation
 		if len(camera_settings) > 0:
-			skvp_video.set_camera_settings(num_frames_read, camera_settings)
+			skvp_video.set_frame_camera_settings(num_frames_read, camera_settings)
 		camera_location = None
 		camera_destination = None
 		camera_scene_rotation = None
@@ -468,7 +495,59 @@ def loads(video_string):
 	return load(string_stream)
 
 
+def create_length_scaled_video(ref_video, scale = None, num_frames = None, num_seconds = None):
+	if scale == None and num_frames == None and num_seconds == None:
+		raise SkvpUsageError('Must specify one of parameters {scale, num_frames, num_seconds}')
+	if (scale != None and num_frames != None) or (scale != None and num_seconds != None) or (num_frames != None and num_seconds != None):
+		raise SkvpUsageError('Must specify only one of parameters {scale, num_frames, num_seconds}')
+	if scale != None:
+		if not (type(scale) is int or type(scale) is float):
+			raise SkvpUsageError('scale parameter must be a number')
+		if scale <= 0:
+			raise SkvpForbiddenOperationError('Scale must be a positive real number')
+	if num_frames != None:
+		if type(num_frames) is int:
+			raise SkvpUsageError('num_frames parameter must be an ineteger')
+		if num_frames <= 0:
+			raise SkvpForbiddenOperationError('Number of target frames must be a positive number')
+	if num_seconds != None:
+		if not (type(num_seconds) is int or type(num_seconds) is float):
+			raise SkvpUsageError('num_seconds parameter must be a number')
+		if num_seconds <= 0:
+			raise SkvpForbiddenOperationError('Number of target seconds must be a positive number')
+	if len(ref_video) == 0:
+		raise SkvpForbiddenOperationError('Cannot scale empty video')
+	final_scale = scale
+	if num_frames != None:
+		final_scale = num_frames / float(len(ref_video))
+	elif num_seconds != None:
+		final_scale = num_seconds / float(ref_video.get_video_length(seconds = True))
+	if final_scale == 1.0:
+		return ref_video[:]
+	new_vid = ref_video[0:0]     # Creating empty video with same header
+	num_frames_target_vid = int(round(len(ref_video) * final_scale))
+	num_frames_ref_vid = len(ref_video)
+	for i in range(num_frames_target_vid):
+		frame_perc = (i) / float(num_frames_target_vid)
+		ref_frame = num_frames_ref_vid * frame_perc
+		upper_weight = ref_frame - int(ref_frame)
+		lower_weight = 1.0 - upper_weight
+		lower_index = int(ref_frame)
+		if lower_weight == 1 or upper_weight == 1:
+			new_vid.add_frame(ref_video.frames[lower_index])
+		else:
+			new_frame = []
+			for j in range(ref_video.get_num_joints()):
+				new_frame.append(lower_weight * ref_video.frames[lower_index] + upper_weight * ref_video.frames[upper_index])
+			new_vid.add_frame(new_frame)
 
+def create_fps_changed_video(ref_video, new_fps):
+	if ref_video.fps == None:
+		raise SkvpForbiddenOperationError('Cannot create fps-changed video while reference video has no fps defined')
+	scale = float(new_fps) / ref_video.fps
+
+	new_vid = create_length_scaled_video(ref_video, scale = scale)
+	new_vid.set_fps(new_fps)
 
 
 
