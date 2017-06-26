@@ -528,8 +528,8 @@ def create_length_scaled_video(ref_video, scale = None, num_frames = None, num_s
 	num_frames_target_vid = int(round(len(ref_video) * final_scale))
 	num_frames_ref_vid = len(ref_video)
 	for i in range(num_frames_target_vid):
-		frame_perc = (i) / float(num_frames_target_vid)
-		ref_frame = num_frames_ref_vid * frame_perc
+		frame_perc = (i) / float(num_frames_target_vid - 1)
+		ref_frame = (num_frames_ref_vid - 1) * frame_perc
 		upper_weight = ref_frame - int(ref_frame)
 		lower_weight = 1.0 - upper_weight
 		lower_index = int(ref_frame)
@@ -538,8 +538,10 @@ def create_length_scaled_video(ref_video, scale = None, num_frames = None, num_s
 		else:
 			new_frame = []
 			for j in range(ref_video.get_num_joints()):
-				new_frame.append(lower_weight * ref_video.frames[lower_index] + upper_weight * ref_video.frames[upper_index])
+				new_frame.append(lower_weight * ref_video.frames[lower_index][j] + upper_weight * ref_video.frames[lower_index + 1][j])
 			new_vid.add_frame(new_frame)
+
+	return new_vid
 
 def create_fps_changed_video(ref_video, new_fps):
 	if ref_video.fps == None:
@@ -548,6 +550,8 @@ def create_fps_changed_video(ref_video, new_fps):
 
 	new_vid = create_length_scaled_video(ref_video, scale = scale)
 	new_vid.set_fps(new_fps)
+
+	return new_vid
 
 
 
