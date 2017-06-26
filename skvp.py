@@ -1,5 +1,6 @@
 import sys
 import io
+import numpy as np
 
 class SkvpVideoInvalidInitError(Exception):
 	pass
@@ -407,11 +408,58 @@ def header_to_video_object(header, skvp_video):
 			raise SkvpFileSyntaxError(SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY + ' must be a real number')
 		skvp_video.set_camera_scene_rotation(rotation)
 
+def get_invideo_camera_parameter(line):
+	parts = line.split('=', 1)
+	if len(parts) != 2:
+		raise SkvpFileSyntaxError('Invalid invideo camera settings line: ' + line)
+	return parts[1].strip()
+
+def read_frames_into_video_object(istream, skvp_video):
+	num_frames_read = 0
+	camera_location = None
+	camera_destination = None
+	camera_scene_rotation = None
+	while True:
+		line = istream.readline()
+		if line == '':    # Empty line within file must contain '\n' char
+			break
+		line = line.strip()
+		if line == '':
+			continue
+		if line.startswith(SKVP_HEADER_CAMERA_LOCATION_ENTRY):
+			param_str = get_invideo_camera_parameter(line)
+			continue
+		elif line.startswith(SKVP_HEADER_CAMERA_DESTINATION_ENTRY):
+			param_str = get_invideo_camera_parameter(line)
+			continue
+		elif line.startswith(SKVP_HEADER_CAMERA_SCENE_ROTATION_ENTRY):
+			param_str = get_invideo_camera_parameter(line)
+			continue
+		joint_locations_as_strings = line.split(';')
+		joint_locations_as_np_arrays = [np.array([float(coor) for coor in joint_loc_str.split(',')]) for joint_loc_str in joint_locations_as_strings]
+		skvp_video.add_frame(joint_locations_as_np_arrays)
+		camera_settings = {}
+		if camera_location != None:
+			camera_settings['camera_location'] = camera_location
+		if camera_destination != None:
+			camera_settings['camera_destination'] = camera_destination
+		if camera_scene_rotation != None:
+			camera_settings['camera_scene_rotation'] = camera_scene_roatation
+		if len(camera_settings) > 0:
+			skvp_video.set_camera_settings(num_frames_read, camera_settings)
+		camera_location = None
+		camera_destination = None
+		camera_scene_rotation = None
+
+		num_frames_read += 1
+
+
 def load(istream):
 	find_skvp_header_beginning(istream)
 	header = find_skvp_video_start_and_get_header(istream)
 	skvp_video = SkvpVideo()
 	header_to_video_object(header, skvp_video)
+	read_frames_into_video_object(istream, skvp_video)
 
 	return skvp_video
 
