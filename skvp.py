@@ -506,7 +506,7 @@ def create_length_scaled_video(ref_video, scale = None, num_frames = None, num_s
 		if scale <= 0:
 			raise SkvpForbiddenOperationError('Scale must be a positive real number')
 	if num_frames != None:
-		if type(num_frames) is int:
+		if not type(num_frames) is int:
 			raise SkvpUsageError('num_frames parameter must be an ineteger')
 		if num_frames <= 0:
 			raise SkvpForbiddenOperationError('Number of target frames must be a positive number')
