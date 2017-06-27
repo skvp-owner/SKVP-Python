@@ -280,7 +280,7 @@ class SkvpVideo:
 			sys.stderr.write('Warning: adding videos with mismatching frame rates. Frames will be copied without modification\n')
 		new_vid = SkvpVideo(fps = self.fps, num_joints = self.num_joints, connections = self.connections, joint_radiuses = self.joint_radiuses, connections_radius = self.connections_radius, camera_location = self.camera_location, camera_destination = self.camera_destination, camera_scene_rotation = self.camera_scene_rotation)
 		new_vid.frames = self.frames + vid_2.frames
-		for frame_index, camera_settings in self.invideo_camera_settings:
+		for frame_index, camera_settings in self.invideo_camera_settings.items():
 			new_vid.invideo_camera_settings[frame_index] = dict(camera_settings)
 		num_frames_self = len(self)
 		for frame_index, camera_settings in vid_2.invideo_camera_settings:
