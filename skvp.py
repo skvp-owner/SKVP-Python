@@ -553,5 +553,13 @@ def create_fps_changed_video(ref_video, new_fps):
 
 	return new_vid
 
+def gradient(ref_video):
+	new_vid = ref_video[0:0]
+	for i in range(len(ref_video) - 1):
+		new_vid.add_frame(ref_video.frames[i + 1] - ref_video.frames[i])
+
+	return new_vid
+
+
 
 
