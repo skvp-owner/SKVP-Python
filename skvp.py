@@ -528,7 +528,10 @@ def create_length_scaled_video(ref_video, scale = None, num_frames = None, num_s
 	num_frames_target_vid = int(round(len(ref_video) * final_scale))
 	num_frames_ref_vid = len(ref_video)
 	for i in range(num_frames_target_vid):
-		frame_perc = (i) / float(num_frames_target_vid - 1)
+		if num_frames_target_vid == 1:
+			frame_perc = 0
+		else:
+			frame_perc = (i) / float(num_frames_target_vid - 1)
 		ref_frame = (num_frames_ref_vid - 1) * frame_perc
 		upper_weight = ref_frame - int(ref_frame)
 		lower_weight = 1.0 - upper_weight
@@ -565,6 +568,29 @@ def gradient(ref_video):
 
 	return new_vid
 
+def norm(ref_video):
+	new_vid = ref_video[0:0]
+	for i in range(len(ref_video)):
+		frame = []
+		for joint in ref_video.frames[i]:
+			vec_magn = np.linalg.norm(joint)
+			if vec_magn == 0:
+				vec_magn = 1
+			frame.append(joint / float(vec_magn))
+		new_vid.add_frame(frame)
+
+	return new_vid
+
+def to_vector(ref_video):
+	num_vals = len(ref_video) * ref_video.get_num_joints() * 3
+	vec = np.zeros(num_vals)
+	offset = 0
+	for frame in ref_video.frames:
+		for joint in frame:
+			vec[offset:offset + 3] = joint
+			offset += 3
+
+	return vec
 
 
 
