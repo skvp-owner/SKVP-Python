@@ -1,6 +1,8 @@
 import sys
 import io
 import numpy as np
+import scipy
+import math
 
 class SkvpVideoInvalidInitError(Exception):
 	pass
@@ -581,6 +583,72 @@ def norm(ref_video):
 
 	return new_vid
 
+def conv(ref_video, mask):
+	if len(mask) % 2 != 1 or len(mask) < 0:
+		raise Exception('Mask size must be positive and odd')
+	if len(mask) > len(ref_video):
+		raise Exception('Mask size must not be higher than video length')
+
+	x_per_joint = []
+	y_per_joint = []
+	z_per_joint = []
+	x_per_joint_filtered = []
+	y_per_joint_filtered = []
+	z_per_joint_filtered = []
+
+
+	new_vid = ref_video[0:0]
+	for frame in ref_video.frames:
+		for i, joint in enumerate(frame):
+			if i >= len(x_per_joint):
+				x_per_joint.append([])
+				y_per_joint.append([])
+				z_per_joint.append([])
+			x_per_joint[i].append(joint[0])
+			y_per_joint[i].append(joint[1])
+			z_per_joint[i].append(joint[2])
+	for joint_num in range(ref_video.get_num_joints()):
+		x_per_joint_filtered.append(np.convolve(x_per_joint[joint_num], mask, 'valid'))
+		y_per_joint_filtered.append(np.convolve(y_per_joint[joint_num], mask, 'valid'))
+		z_per_joint_filtered.append(np.convolve(z_per_joint[joint_num], mask, 'valid'))
+	print(y_per_joint[0][:5])
+	print(y_per_joint_filtered[0][:5])
+	new_num_frames = len(x_per_joint_filtered[0])
+	for i in range(new_num_frames):
+		frame = []
+		for joint_num in range(ref_video.get_num_joints()):
+			joint_at_frame = np.array((x_per_joint_filtered[joint_num][i], y_per_joint_filtered[joint_num][i], z_per_joint_filtered[joint_num][i]))
+			frame.append(joint_at_frame)
+		new_vid.add_frame(frame)
+
+	return new_vid
+
+def get_gaussian_value_at(std, mean, x):
+	a = 1 / (2 * math.pi * (std ** 2)) ** 0.5
+	b = ((-1) * (x - mean) ** 2) / (2 * (std ** 2))
+
+	return a * (math.e ** b)
+
+def generate_gaussian_mask(std, length):
+	if length % 2 == 0:
+		raise Exception('Mask size must be odd')
+	mask_center_idx = int(length / 2) # Counting indices from 0 :)
+	mask = []
+	for i in range(length):
+		at_std = abs(mask_center_idx - i)
+		mask.append(get_gaussian_value_at(std, 0, at_std))
+	#current_norm = np.linalg.norm(mask)
+	#factor = 1.0 / current_norm
+	mask_sum = np.sum(mask)
+	factor = 1.0 / mask_sum
+	
+	return [factor * val for val in mask]
+
+def gaussian_filter(ref_vid, mask_size, std):
+	mask = generate_gaussian_mask(std, mask_size)
+
+	return conv(ref_vid, mask)
+
 def to_vector(ref_video):
 	num_vals = len(ref_video) * ref_video.get_num_joints() * 3
 	vec = np.zeros(num_vals)
@@ -591,6 +659,20 @@ def to_vector(ref_video):
 			offset += 3
 
 	return vec
+
+
+## TODO: Implement methods for
+# 1. Median Filter
+# 2. Gaussian Filter    V
+# 2a. conv              V
+# 3. Skeleton edges scaling
+# 4. Skeleton projection to normalized coordinate system
+
+
+
+
+
+
 
 
 
