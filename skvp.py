@@ -285,7 +285,7 @@ class SkvpVideo:
 		for frame_index, camera_settings in self.invideo_camera_settings.items():
 			new_vid.invideo_camera_settings[frame_index] = dict(camera_settings)
 		num_frames_self = len(self)
-		for frame_index, camera_settings in vid_2.invideo_camera_settings:
+		for frame_index, camera_settings in vid_2.invideo_camera_settings.items():
 			new_vid.invideo_camera_settings[frame_index + num_frames_self] = dict(camera_settings)
 		if num_frames_self not in new_vid.invideo_camera_settings:
 			camera_settings = {}
@@ -570,15 +570,59 @@ def gradient(ref_video):
 
 	return new_vid
 
-def norm(ref_video):
+
+def equalize(ref_video, num_bins = None):
 	new_vid = ref_video[0:0]
+	num_frames = float(len(ref_video))
+	joint_vectors = []
+	if num_bins != None:
+		bin_size = int(round(len(ref_video) / float(num_bins)))
+	for i in range(ref_video.get_num_joints()):
+		joint_vectors.append([frame[i] for frame in ref_video.frames])
+		sorted_by_magnitude = sorted(range(len(joint_vectors[i])), key = lambda x : np.linalg.norm(joint_vectors[i][x]))
+		for j in range(len(sorted_by_magnitude)):
+			if num_bins == None:
+				coef = (j + 1) / num_frames
+			else:
+				bin_index = int(j / bin_size) + 1
+				if bin_index > num_bins:
+					bin_index -= 1
+				coef = (bin_index / float(num_bins))
+			frame_index = sorted_by_magnitude[j]
+			vec_norm = np.linalg.norm(joint_vectors[i][frame_index])
+			if vec_norm == 0:
+				vec_norm = 1
+			joint_vectors[i][frame_index] = (coef / vec_norm) * joint_vectors[i][frame_index]
+
+	for i in range(len(ref_video)):
+		frame = [joint_vec[i] for joint_vec in joint_vectors]
+		new_vid.add_frame(frame)
+
+	return new_vid
+
+
+def norm(ref_video, selective_norm = False):
+	new_vid = ref_video[0:0]
+	if selective_norm:
+		joint_vec_sizes_opp = []
+		for i in range(ref_video.get_num_joints()):
+			joint_vec_sizes_opp.append([np.linalg.norm(ref_video.frames[frame_num][i]) ** (-1) for frame_num in range(len(ref_video))])
+		joint_nonorm_indices = []
+		for i in range(ref_video.get_num_joints()):
+			joint_opp_size_mean = np.mean(joint_vec_sizes_opp[i])
+			joint_nonorm_indices.append(set((frame_num for frame_num in range(len(joint_vec_sizes_opp[i])) if joint_vec_sizes_opp[i][frame_num] > joint_opp_size_mean)))
+
+
 	for i in range(len(ref_video)):
 		frame = []
-		for joint in ref_video.frames[i]:
-			vec_magn = np.linalg.norm(joint)
-			if vec_magn == 0:
-				vec_magn = 1
-			frame.append(joint / float(vec_magn))
+		for joint_num, joint in enumerate(ref_video.frames[i]):
+			if selective_norm and (i in joint_nonorm_indices[joint_num]):
+				frame.append(joint)
+			else:
+				vec_magn = np.linalg.norm(joint)
+				if vec_magn == 0:
+					vec_magn = 1
+				frame.append(joint / float(vec_magn))
 		new_vid.add_frame(frame)
 
 	return new_vid
@@ -611,8 +655,6 @@ def conv(ref_video, mask):
 		x_per_joint_filtered.append(np.convolve(x_per_joint[joint_num], mask, 'valid'))
 		y_per_joint_filtered.append(np.convolve(y_per_joint[joint_num], mask, 'valid'))
 		z_per_joint_filtered.append(np.convolve(z_per_joint[joint_num], mask, 'valid'))
-	print(y_per_joint[0][:5])
-	print(y_per_joint_filtered[0][:5])
 	new_num_frames = len(x_per_joint_filtered[0])
 	for i in range(new_num_frames):
 		frame = []
@@ -659,6 +701,79 @@ def to_vector(ref_video):
 			offset += 3
 
 	return vec
+
+class SkvpPyramid:
+	def __init__(self, skvp_video, filter_sizes, filter_stds):
+		self.original_video = skvp_video[:]
+		self.levels = []
+
+		if len(filter_sizes) != len(filter_stds):
+			raise SkvpVideoInvalidInitError('"filter sizes" and "filter stds" must have the same lengths')
+		self.filter_sizes = list(filter_sizes)
+		self.filter_stds = list(filter_stds)
+		self._create_pyramid()
+
+	def get_num_levels(self):
+		return len(self.levels)
+
+	def get_level(self, level):
+		return self.levels[level]
+
+	def _create_pyramid(self):
+		self.levels.append(self.original_video)
+		for f_size, f_std in zip(self.filter_sizes, self.filter_stds):
+			ref_vid = self.levels[-1]
+			ref_vid_blurred = gaussian_filter(ref_vid, f_size, f_std)
+			next_vid = create_length_scaled_video(ref_vid_blurred, num_frames = int(len(ref_vid) / 2))
+			self.levels.append(next_vid)
+	
+	def map_index(self, index, orig_level, dst_level):
+		if orig_level < 0 or orig_level >= len(self.levels):
+			raise SkvpVideoInvalidValueError('"orig level" is out of range')
+		if dst_level < 0 or dst_level >= len(self.levels):
+			raise SkvpVideoInvalidValueError('"dst level" is out of range')
+		if index < 0 or index >= len(self.levels[orig_level]):
+			raise SkvpVideoInvalidValueError('Index {0} is out of range for level {1}'.format(str(index), str(orig_level)))
+		direction = 1 if (dst_level - orig_level > 0) else -1
+		new_index = index
+		for i in range(orig_level, dst_level, direction):
+			if direction == 1:
+				new_index = self._map_adjacent(new_index, i, i + 1, True)
+			else:
+				new_index = self._map_adjacent(new_index, i - 1, i)
+
+		return new_index
+	
+
+	def _map_adjacent(self, index, parent_level, child_level, parent_to_child = False):
+		offset = int(self.filter_sizes[parent_level] / 2)
+		parent_vid_size = len(self.levels[parent_level]) - 2 * offset
+		child_vid_size = len(self.levels[child_level])
+		if parent_to_child:
+			if index - offset < 0 or index + offset >= parent_vid_size:
+				raise SkvpForbiddenOperationError('Cannot map index {0} from level {1} to level {2} because it was clipped out by the filter'.format(str(index), str(parent_level), str(child_level)))
+			return int(round(child_vid_size * ((index - offset) / parent_vid_size)))
+		return int(round(parent_vid_size * (index / child_vid_size) + offset))
+
+def pyramid(ref_vid, filter_sizes, filter_stds):
+	return SkvpPyramid(ref_vid, filter_sizes, filter_stds)
+
+def pyramid_old(ref_vid, max_depth = None, min_length = 3):
+	ret_pyr = [ref_vid[:]]
+	curr_len = len(ret_pyr[-1])
+	if curr_len <= min_length:
+		return ret_pyr
+	if max_depth != None and len(ret_pyr) > max_depth:
+		return ret_pyr
+	while True:
+		if len(ret_pyr) > max_depth:
+			return ret_pyr
+		curr_len = len(ret_pyr[-1])
+		next_len = int(curr_len / 2.0)
+		if next_len < min_length:
+			return ret_pyr
+		last_vid_blurred = gaussian_filter(ret_pyr[-1], 3, 1)
+		ret_pyr.append(create_length_scaled_video(last_vid_blurred, num_frames = next_len))
 
 
 ## TODO: Implement methods for
