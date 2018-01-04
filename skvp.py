@@ -811,7 +811,7 @@ def project_to_body_plane(ref_vid, spine_base_index, shoulder_left_index, should
 		spine_base_to_shoulder_left = frame[shoulder_left_index] - frame[spine_base_index]
 		spine_base_to_shoulder_right = frame[shoulder_right_index] - frame[spine_base_index]
 		# Z axis goes into the screen
-		z_axis = np.cross(spine_base_to_shoulder_left, spine_base_to_shoulder_right)
+		z_axis = -np.cross(spine_base_to_shoulder_left, spine_base_to_shoulder_right)
 		z_axis /= np.linalg.norm(z_axis)
 		x_axis = np.cross(z_axis, y_axis)
 		x_axis /= np.linalg.norm(x_axis)
