@@ -300,7 +300,11 @@ class SkvpVideo:
 
 		return new_vid
 			
-def dump(skvp_video, ostream):
+def dump(skvp_video, ostream_or_filename):
+	if type(ostream_or_filename).__name__ == 'str':
+		ostream = open(ostream_or_filename, 'w')
+	else:
+		ostream = ostream_or_filename
 	self = skvp_video 
 	if self.fps == None:
 		raise SkvpForbiddenOperationError('Cannot dump SkvpVideo while FPS is not defined')
@@ -483,7 +487,11 @@ def read_frames_into_video_object(istream, skvp_video):
 		num_frames_read += 1
 
 
-def load(istream):
+def load(istream_or_filename):
+	if (type(istream_or_filename).__name__ == 'str'):
+		istream = open(istream_or_filename, 'r')
+	else:
+		istream = istream_or_filename
 	find_skvp_header_beginning(istream)
 	header = find_skvp_video_start_and_get_header(istream)
 	skvp_video = SkvpVideo()
@@ -627,11 +635,30 @@ def norm(ref_video, selective_norm = False):
 
 	return new_vid
 
+def median(ref_video, mask_size = 3):
+	if mask_size <= 0 or mask_size % 2 != 1:
+		raise Exception('Mask size must be positive and odd')
+	if mask_size > len(ref_video):
+		raise Exception('Mask size must not be greater than video length')
+	new_vid = ref_video[0:0]
+	for frame_i in range(len(ref_video) - mask_size + 1):
+		new_frame = []
+		frame_range = ref_video.frames[frame_i:frame_i + mask_size]
+		for joint in range(ref_video.get_num_joints()):
+			x_med = np.median([frame[joint][0] for frame in frame_range])
+			y_med = np.median([frame[joint][1] for frame in frame_range])
+			z_med = np.median([frame[joint][2] for frame in frame_range])
+			new_frame.append(np.array((x_med, y_med, z_med)))
+		new_vid.add_frame(new_frame)
+	
+	return new_vid
+
+
 def conv(ref_video, mask):
 	if len(mask) % 2 != 1 or len(mask) < 0:
 		raise Exception('Mask size must be positive and odd')
 	if len(mask) > len(ref_video):
-		raise Exception('Mask size must not be higher than video length')
+		raise Exception('Mask size must not be greater than video length')
 
 	x_per_joint = []
 	y_per_joint = []
@@ -775,13 +802,96 @@ def pyramid_old(ref_vid, max_depth = None, min_length = 3):
 		last_vid_blurred = gaussian_filter(ret_pyr[-1], 3, 1)
 		ret_pyr.append(create_length_scaled_video(last_vid_blurred, num_frames = next_len))
 
+def project_to_body_plane(ref_vid, spine_base_index, shoulder_left_index, shoulder_right_index):
+	ret_vid = ref_vid[0:0]
+	for frame in ref_vid.frames:
+		shoulder_center = 0.5 * (frame[shoulder_left_index] +  frame[shoulder_right_index])
+		y_axis = shoulder_center - frame[spine_base_index]
+		y_axis /= np.linalg.norm(y_axis)
+		spine_base_to_shoulder_left = frame[shoulder_left_index] - frame[spine_base_index]
+		spine_base_to_shoulder_right = frame[shoulder_right_index] - frame[spine_base_index]
+		# Z axis goes into the screen
+		z_axis = np.cross(spine_base_to_shoulder_left, spine_base_to_shoulder_right)
+		z_axis /= np.linalg.norm(z_axis)
+		x_axis = np.cross(z_axis, y_axis)
+		x_axis /= np.linalg.norm(x_axis)
+
+		#plane_center = 0.5 * (shoulder_center + frame[spine_base_index])
+		proj_mat = np.array([x_axis, y_axis, z_axis])
+		new_frame = [proj_mat.dot(joint) for joint in frame]
+
+		new_shoulder_center = 0.5 * (new_frame[shoulder_left_index] + new_frame[shoulder_right_index])
+		plane_center = 0.5 * (new_shoulder_center + new_frame[spine_base_index])
+		new_frame = [point - plane_center for point in new_frame]
+		
+		ret_vid.add_frame(new_frame)
+	
+	return ret_vid
+		
+def distinct_connections(ref_vid):
+	dc = set()
+	for v1, v2 in ref_vid.get_connections():
+		dc.add((v1, v2) if v1 < v2 else (v2, v1))
+	num_connections = len(dc)
+	dc_sorted_list = list(dc)
+	dc_sorted_list.sort(key = lambda x : (x[0] - 1) * num_connections + x[1] - 1)
+
+	return dc_sorted_list
+
+def connection_lengths(ref_vid, frames = None):
+	if frames == None:
+		frames = range(len(ref_vid))
+	else:
+		frames = list(frames)
+	connections = distinct_connections(ref_vid)
+	lengths = {}
+	for v1, v2 in connections:
+		lengths_over_frames = []
+		for frame in frames:
+			# Connections in SKVP start from 1 !
+			v1_loc = ref_vid.frames[frame][v1 - 1]
+			v2_loc = ref_vid.frames[frame][v2 - 1]
+			lengths_over_frames.append(np.linalg.norm(v2_loc - v1_loc))
+		lengths[(v1,v2)] = np.mean(lengths_over_frames)
+	
+	return lengths
+
+def scaled_connections(ref_vid, connection_lengths):
+	new_vid = ref_vid[:]
+	edges = distinct_connections(ref_vid)
+	vertex_to_edges = {i : [edge for edge in edges if (i + 1) in edge] for i in range(ref_vid.get_num_joints())}
+	all_vertices = set(range(ref_vid.get_num_joints()))
+	handled_vertices = set()
+	while len(all_vertices) != len(handled_vertices):
+		diff = list(all_vertices - handled_vertices)
+		to_handle = [diff[0]]
+		while len(to_handle) > 0:
+			handled_vertex = to_handle.pop(0)
+			if handled_vertex in handled_vertices:
+				# Could happen only in case of cycles in the graph
+				# Scaling in a graph that has cycles is not likely to succeed satisfying all the requirements anyway, since two different vertices might both want to change the location of their common neighbor, to different locations
+				continue
+			handled_vertices.add(handled_vertex)
+			for edge in vertex_to_edges[handled_vertex]:
+				neighbor = (edge[0] - 1) if edge[0] - 1 == handled_vertex else (edge[1] - 1)
+				if neighbor in handled_vertices:
+					continue
+				to_handle.append(neighbor)
+				for frame in new_vid.frames:
+					edge_as_vector = frame[neighbor] - frame[handled_vertex]
+					vec_magnitude = np.linalg.norm(edge_as_vector)
+					edge_as_vector *= connection_lengths[edge] / vec_magnitude
+					frame[neighbor] = frame[handled_vertex] + edge_as_vector
+	return new_vid
+
+
 
 ## TODO: Implement methods for
-# 1. Median Filter
+# 1. Median Filter      V
 # 2. Gaussian Filter    V
 # 2a. conv              V
-# 3. Skeleton edges scaling
-# 4. Skeleton projection to normalized coordinate system
+# 3. Skeleton edges scaling  V
+# 4. Skeleton projection to normalized coordinate system V
 
 
 
