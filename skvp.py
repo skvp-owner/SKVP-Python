@@ -888,18 +888,5 @@ def scaled_connections(ref_vid, connection_lengths):
 
 
 
-## TODO: Implement methods for
-# 1. Median Filter      V
-# 2. Gaussian Filter    V
-# 2a. conv              V
-# 3. Skeleton edges scaling  V
-# 4. Skeleton projection to normalized coordinate system V
-
-
-
-
-
-
-
 
 
