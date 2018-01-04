@@ -810,13 +810,15 @@ def project_to_body_plane(ref_vid, spine_base_index, shoulder_left_index, should
 		y_axis /= np.linalg.norm(y_axis)
 		spine_base_to_shoulder_left = frame[shoulder_left_index] - frame[spine_base_index]
 		spine_base_to_shoulder_right = frame[shoulder_right_index] - frame[spine_base_index]
-		# Z axis goes into the screen
+		# Kinect's Z axis goes into the depth of the screen
+		# while in geometry, Z axis is in the opposite way
+		# Hence, although it is counter-intuitive, in order to have our Z axis positive and not flip the data, we multiply according to geometry rules
 		z_axis = -np.cross(spine_base_to_shoulder_left, spine_base_to_shoulder_right)
 		z_axis /= np.linalg.norm(z_axis)
-		x_axis = np.cross(z_axis, y_axis)
+		# Since Z axis goes to the other way, we also need to flip this cross product to get X axis
+		x_axis = -np.cross(z_axis, y_axis)
 		x_axis /= np.linalg.norm(x_axis)
 
-		#plane_center = 0.5 * (shoulder_center + frame[spine_base_index])
 		proj_mat = np.array([x_axis, y_axis, z_axis])
 		new_frame = [proj_mat.dot(joint) for joint in frame]
 
