@@ -804,28 +804,26 @@ def pyramid_old(ref_vid, max_depth = None, min_length = 3):
 
 def project_to_body_plane(ref_vid, spine_base_index, shoulder_left_index, shoulder_right_index):
 	ret_vid = ref_vid[0:0]
-	for frame in ref_vid.frames:
+	for i, frame in enumerate(ref_vid.frames):
 		shoulder_center = 0.5 * (frame[shoulder_left_index] +  frame[shoulder_right_index])
 		y_axis = shoulder_center - frame[spine_base_index]
 		y_axis /= np.linalg.norm(y_axis)
 		spine_base_to_shoulder_left = frame[shoulder_left_index] - frame[spine_base_index]
 		spine_base_to_shoulder_right = frame[shoulder_right_index] - frame[spine_base_index]
-		# Kinect's Z axis goes into the depth of the screen
-		# while in geometry, Z axis is in the opposite way
-		# Hence, although it is counter-intuitive, in order to have our Z axis positive and not flip the data, we multiply according to geometry rules
-		z_axis = -np.cross(spine_base_to_shoulder_left, spine_base_to_shoulder_right)
+		# If the human is facing the camera, we want to preserve the order of X and Z coordinates. Else, we want to flip it.
+		z_axis = np.cross(spine_base_to_shoulder_right, spine_base_to_shoulder_left)
 		z_axis /= np.linalg.norm(z_axis)
 		# Since Z axis goes to the other way, we also need to flip this cross product to get X axis
-		x_axis = -np.cross(z_axis, y_axis)
+		x_axis = np.cross(y_axis, z_axis)
 		x_axis /= np.linalg.norm(x_axis)
 
+		plane_center = 0.5 * (shoulder_center + frame[spine_base_index])
 		proj_mat = np.array([x_axis, y_axis, z_axis])
-		new_frame = [proj_mat.dot(joint) for joint in frame]
+		new_frame = [proj_mat.dot(joint - plane_center) for joint in frame]
 
 		new_shoulder_center = 0.5 * (new_frame[shoulder_left_index] + new_frame[shoulder_right_index])
-		plane_center = 0.5 * (new_shoulder_center + new_frame[spine_base_index])
-		new_frame = [point - plane_center for point in new_frame]
-		
+		new_plane_center = 0.5 * (new_shoulder_center + new_frame[spine_base_index])
+		new_frame = [point - new_plane_center for point in new_frame]
 		ret_vid.add_frame(new_frame)
 	
 	return ret_vid
