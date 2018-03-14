@@ -3,6 +3,7 @@ import io
 import numpy as np
 import scipy
 import math
+import gzip
 
 class SkvpVideoInvalidInitError(Exception):
 	pass
@@ -302,8 +303,13 @@ class SkvpVideo:
 			
 def dump(skvp_video, ostream_or_filename):
 	if type(ostream_or_filename).__name__ == 'str':
-		ostream = open(ostream_or_filename, 'w')
+		self_opened = True
+		if ostream_or_filename.lower().endswith('.gz'):
+			ostream = gzip.open(ostream_or_filename, 'wt')
+		else:
+			ostream = open(ostream_or_filename, 'w')
 	else:
+		self_opened = False
 		ostream = ostream_or_filename
 	self = skvp_video 
 	if self.fps == None:
@@ -354,6 +360,8 @@ def dump(skvp_video, ostream_or_filename):
 		if i < len(self.frames) - 1:
 			ostream.write('\n')
 		
+	if self_opened:
+		ostream.close()
 
 def dumps(skvp_video):
 	string_stream = io.StringIO()
@@ -489,14 +497,23 @@ def read_frames_into_video_object(istream, skvp_video):
 
 def load(istream_or_filename):
 	if (type(istream_or_filename).__name__ == 'str'):
-		istream = open(istream_or_filename, 'r')
+		self_opened = True
+		if istream_or_filename.lower().endswith('.gz'):
+			istream = gzip.open(istream_or_filename, 'rt')
+		else:
+			istream = open(istream_or_filename, 'r')
 	else:
+		self_opened = False
 		istream = istream_or_filename
 	find_skvp_header_beginning(istream)
 	header = find_skvp_video_start_and_get_header(istream)
 	skvp_video = SkvpVideo()
 	header_to_video_object(header, skvp_video)
 	read_frames_into_video_object(istream, skvp_video)
+
+	if self_opened:
+		istream.close()
+
 
 	return skvp_video
 
