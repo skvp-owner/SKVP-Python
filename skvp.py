@@ -746,6 +746,20 @@ def to_vector(ref_video):
 
 	return vec
 
+def compress(ref_video):
+	new_vid = ref_video[:]
+	for joint in range(new_vid.get_num_joints()):
+		for dim in range(3):
+			vals = [frame[joint][dim] for frame in new_vid.frames]
+			std = np.std(vals)
+			min_detail_level = std / len(vals)
+			num_decimal_points = int(- (round(np.log10(min_detail_level)) - 1))
+			num_decimal_points = 0 if num_decimal_points < 0 else num_decimal_points
+			for frame in new_vid.frames:
+				frame[joint][dim] = round(frame[joint][dim], num_decimal_points)
+
+	return new_vid
+
 class SkvpPyramid:
 	def __init__(self, skvp_video, filter_sizes, filter_stds):
 		self.original_video = skvp_video[:]
