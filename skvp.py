@@ -862,10 +862,11 @@ def project_to_body_plane(ref_vid, spine_base_index, shoulder_left_index, should
 def distinct_connections(ref_vid):
 	dc = set()
 	for v1, v2 in ref_vid.get_connections():
-		dc.add((v1, v2) if v1 < v2 else (v2, v1))
+		# SKVP joint indices start from 1. Reducing to start from 0
+		dc.add((v1 - 1, v2 - 1) if v1 < v2 else (v2 - 1, v1 - 1))
 	num_connections = len(dc)
 	dc_sorted_list = list(dc)
-	dc_sorted_list.sort(key = lambda x : (x[0] - 1) * num_connections + x[1] - 1)
+	dc_sorted_list.sort(key = lambda x : (x[0]) * num_connections + x[1])
 
 	return dc_sorted_list
 
@@ -879,24 +880,25 @@ def connection_lengths(ref_vid, frames = None):
 	for v1, v2 in connections:
 		lengths_over_frames = []
 		for frame in frames:
-			# Connections in SKVP start from 1 !
-			v1_loc = ref_vid.frames[frame][v1 - 1]
-			v2_loc = ref_vid.frames[frame][v2 - 1]
+			v1_loc = ref_vid.frames[frame][v1]
+			v2_loc = ref_vid.frames[frame][v2]
 			lengths_over_frames.append(np.linalg.norm(v2_loc - v1_loc))
-		lengths[(v1,v2)] = np.mean(lengths_over_frames)
+		lengths[(v1, v2)] = np.mean(lengths_over_frames)
 	
 	return lengths
 
 def scaled_connections(ref_vid, connection_lengths):
 	new_vid = ref_vid[:]
 	edges = distinct_connections(ref_vid)
-	vertex_to_edges = {i : [edge for edge in edges if (i + 1) in edge] for i in range(ref_vid.get_num_joints())}
+	vertex_to_edges = {i : [edge for edge in edges if i in edge] for i in range(ref_vid.get_num_joints())}
 	all_vertices = set(range(ref_vid.get_num_joints()))
 	handled_vertices = set()
 	while len(all_vertices) != len(handled_vertices):
+		# This outer "while" loop is here to support cases of disconnected graphs
 		diff = list(all_vertices - handled_vertices)
 		to_handle = [diff[0]]
 		while len(to_handle) > 0:
+			# BFS
 			handled_vertex = to_handle.pop(0)
 			if handled_vertex in handled_vertices:
 				# Could happen only in case of cycles in the graph
@@ -904,15 +906,16 @@ def scaled_connections(ref_vid, connection_lengths):
 				continue
 			handled_vertices.add(handled_vertex)
 			for edge in vertex_to_edges[handled_vertex]:
-				neighbor = (edge[0] - 1) if edge[0] - 1 == handled_vertex else (edge[1] - 1)
+				neighbor = edge[1] if edge[0] == handled_vertex else edge[0]
 				if neighbor in handled_vertices:
 					continue
 				to_handle.append(neighbor)
-				for frame in new_vid.frames:
+				for frame, new_frame in zip(ref_vid.frames, new_vid.frames):
+					# Vector direction and length must be computed from the original video (since "handled_vertex" might have moved)
 					edge_as_vector = frame[neighbor] - frame[handled_vertex]
 					vec_magnitude = np.linalg.norm(edge_as_vector)
 					edge_as_vector *= connection_lengths[edge] / vec_magnitude
-					frame[neighbor] = frame[handled_vertex] + edge_as_vector
+					new_frame[neighbor] = new_frame[handled_vertex] + edge_as_vector
 	return new_vid
 
 
